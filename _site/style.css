@@ -1,0 +1,39 @@
+@import url('https://fonts.googleapis.com/css2?family=Bitter');
+
+.distill-site-nav {
+  color: #000a0d; 
+  background-color: #88d7eb;
+  font-size: 20px;
+  font-weight: 600;
+  font-family: 'Bitter', sans-serif;
+}
+
+.distill-site-header .title {
+  font-family: 'Bitter', sans-serif;
+  color: #123456;
+}
+
+.distill-site-header a {
+  font-family: 'Bitter', sans-serif;
+  color: #123456;
+}
+
+d-title h1 {
+  font-family: 'Bitter', sans-serif;
+}
+
+d-title p {
+  font-family: 'Bitter', sans-serif;
+}
+
+d-article h2 {
+  font-family: 'Bitter', sans-serif;
+}
+
+d-article h1 {
+  font-family: 'Bitter', sans-serif;
+}
+
+.posts-list {
+  font-family: 'Bitter', sans-serif;
+}

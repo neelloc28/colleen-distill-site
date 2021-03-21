@@ -1,0 +1,404 @@
+---
+title: "Employee Attrition: Why do people leave their jobs?"
+description: |
+  Here, we wanted to see which potential (or current) employees have higher likelihoods of leaving a job without being replaced, and which are more likely to stay. To investigate this question, we used Machine Learning concepts to pick the ideal model and parameters for our dataset.
+author:
+  - name: Colleen, Ikran, Sebastian, and Amritha
+    url: {}
+date: 04-21-2020
+output:
+  distill::distill_article:
+    self_contained: false
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(warning = FALSE, message = FALSE) 
+```
+
+```{r, echo=FALSE}
+#plotting and exploring
+library(tidyverse) #for plotting and summarizing
+library(GGally) #for nice scatterplot matrix 
+library(ggridges) #for joy/ridge plots
+library(corrplot) #for basic correlation matrix plot
+library(naniar) #for exploring missing values
+library(pdp) #for partial dependence plots, MARS models
+library(rpart.plot) #for plotting decision trees
+library(vip) #for importance plots
+library(pROC) #for ROC curves
+library(plotROC) #for plotting ROC curves
+
+#making things look nice
+library(lubridate) #for nice dates
+library(knitr) #for nice tables
+library(scales) #for nice labels on graphs
+library(gridExtra) #for arranging plots
+library(broom) #for nice model output
+library(janitor) #for nice names
+
+#data
+library(ISLR) #for data
+library(moderndive) #for data
+library(rattle) #weather data
+library(cluster)
+
+#modeling
+library(rsample) #for splitting data
+library(recipes) #for keeping track of transformations
+library(caret) #for modeling
+library(leaps) #for variable selection
+library(glmnet) #for LASSO
+library(earth) #for MARS models
+library(rpart) #for decision trees
+library(randomForest) #for bagging and random forests
+
+theme_set(theme_minimal())
+```
+
+```{r, include=FALSE}
+attrition <- read.csv("https://raw.githubusercontent.com/isheikhm/STAT253GroupProject/master/attrition.csv", fileEncoding="UTF-8-BOM")
+
+#check if we have missing values..
+# attrition %>%
+#   add_n_miss() %>%
+#   arrange(desc(n_miss_all))
+
+attrition <- attrition %>% 
+mutate(WorkLifeBalance = fct_recode(as.factor(WorkLifeBalance), Bad = "1", Good = "2", Better = "3", Best = "4"),
+       EnvironmentSatisfaction = fct_recode(as.factor(EnvironmentSatisfaction), Low="1", Medium = "2", High = "3", `Very High` = "4"))
+
+#want to remove -0.04 from YearsAtCompany
+# attrition %>%
+#   arrange(YearsAtCompany)
+
+#split into training and testing
+set.seed(253)
+attrition_split <- initial_split(attrition, prop = .7)
+
+attrition_train <- training(attrition_split)
+attrition_test <- testing(attrition_split)
+```
+
+
+>*Introduction*
+
+Many people remain at their jobs for a long time, but some people inevitably end up leaving.  Wouldn't it be beneficial to be able to tell which potential (or current) employees have a higher likelihood of leaving the job without being replaced, and which are likely to stay?
+
+This knowledge could be used by the employers for good.  For example, they could see what factors influence employee attrition that can be changed to better the employee's experience, such as whether or not the employee works overtime.  It could also be used for not so good reasons, if a model predicts that a potential employee is likely to quit, and that leads to them not even being considered for the job.
+
+We wanted to explore this more, to see if we could accurately predict whether or not an employee will leave their job.  We used Kaggle's (fictional) attrition dataset, which contains data from 1470 employees. In the original dataset, about 83.9% of employees were replaced, while 16.1% resulted in attrition. These percentages are shown in the plot below.
+
+```{r}
+ggplot(data = attrition, aes(x=Attrition)) +
+  geom_bar(color = 'blue', fill = 'lightblue') +
+  ggtitle("Employee Attrition in Full Dataset")
+```
+
+
+The dataset included 35 variables:
+
+```{r, echo=FALSE}
+names(attrition)
+```
+
+>Data Cleaning
+
+To clean the data, we recoded the levels of the WorkLifeBalance and EnvironmentSatisfaction variables to be more meaningful to the viewer, rather than just easily-misinterperable numbers. Originally these variables were coded as numbers 1-4, but we refactored them to take on their original values, e.g. "High" or "Good".
+
+
+>Our hypothesis
+
+We then tried to brainstorm what variables (out of the 35 in the attrition data) might be important predictors of whether or not an employee will quit their job.  We split the data into training and testing, and created exploratory plots of some of the variables using the training dataset.  A few variables that we thought would be important were `OverTime`, `YearsAtCompany`, `Age`, `WorkLifeBalance`, and `EnvironmentSatisfaction`. The relationships of these variables to `Attrition` are visualized below.
+
+```{r, echo=FALSE}
+attrition_train %>%
+  # mutate(age_range <- cut(attrition$Age, 6)) %>%
+  ggplot(aes(fill = Attrition , x = cut(Age,4, labels=c("18-28", "29-39", "40-49", "50-60")))) +
+  geom_bar(position = "fill") +
+  labs(x = "Age range", y = "% Attrition")+
+  scale_fill_brewer(palette = "Blues") 
+```
+
+```{r, echo=FALSE}
+#overtime vs attrition
+attrition %>%
+  ggplot(aes(fill = Attrition, x = OverTime)) +
+  geom_bar(position = "fill") +
+  labs(y="% Attrition") +
+  scale_fill_brewer(palette = "Greens")
+```
+
+```{r, echo=FALSE}
+#work life balance vs attrition
+attrition %>%
+  ggplot(aes(fill = Attrition, x = WorkLifeBalance)) +
+  geom_bar(position = "fill") +
+  labs(y="% Attrition") +
+  scale_fill_brewer(palette = "Reds")
+```
+
+
+```{r, echo=FALSE}
+#a different look at years at company and attrition
+attrition %>%
+  ggplot(aes(fill=Attrition, x=cut(YearsAtCompany, c(-1,5,10,20,41), labels=c("0-5","6-10", "11-20", "21+")))) +
+  geom_bar(position = "fill") +
+  labs(x="Years at company", y="% Attrition")+
+  scale_fill_brewer(palette = 7) 
+```
+
+```{r, echo=FALSE}
+# environment satisfactions vs attrition
+attrition %>%
+  ggplot(aes(fill = Attrition, x = EnvironmentSatisfaction)) +
+  geom_bar(position = "fill")+
+  labs(y="% Attrition") +
+  scale_fill_brewer(palette = 11) 
+
+#1 'Low'
+#2 'Medium'
+#3 'High'
+#4 'Very High'
+```
+
+The first model we built was a logistic regression model using these variables (`OverTime`, `YearsAtCompany`, `Age`, `WorkLifeBalance`, and `EnvironmentSatisfaction`) that we initially suspected to have an influence on attrition rates.
+
+
+## 1st model
+
+```{r}
+set.seed(253)
+
+attrition_mod1 <- train(
+    Attrition ~ OverTime + YearsAtCompany + Age + WorkLifeBalance + EnvironmentSatisfaction ,
+    data = attrition_train,
+    method = "glm",
+    family = "binomial",
+    trControl = trainControl(method = "cv", number = 5),
+    metric = "Accuracy",
+    na.action = na.omit
+)
+```
+
+```{r, echo=FALSE}
+summary(attrition_mod1)
+
+# Those who worked overtime have 4.31 times the odds of attriting than those who don't work overtime. 
+```
+
+We can interpret the exponentiated coefficients of this model as multipliers to the odds of an employee leaving resulting in attrition. For example, the exponentiated coefficient on the `OverTimeYes` variable of 4.308 means that employees who worked overtime have their odds of leaving resulting in attrition multiplied by 4.308 compared to employees who did not work overtime.
+
+
+>Model Evaluation
+
+To evaluate this model, we looked at the accuracy rate, as well as the sensitivity and specificty. This model had an accuracy rate of 84.9%. This appears good at first glance, but it is very close to the no information rate (the rate at which a correct guess can be made with no information) of the data, which is 83.6%. Additionally, the sensitivity is 14.2% and the specificity is 98.7%. This means that the model is mostly guessing no attrition for every case and getting the actual no attrition cases right almost all the time and the actual attrition cases wrong almost all the time. We want our model to be able to detect attrition, so this isn't the best model for us.
+
+```{r, echo=FALSE}
+
+confusionMatrix(data = predict(attrition_mod1, type = "raw"),
+                reference = as.factor(attrition_train$Attrition), 
+                positive = "Yes") 
+```
+
+```{r, eval=FALSE}
+# Accuracy rate of 84.9%... BUT it isn't much better than the No Information Rate (predicting these by chance) of 83.6%...
+# we care more about the sensitivity, which is the percentage of correct predictions that people would leave their job out of all of the people who did end up leaving their job
+# sensitivity is .13; therefore, this model does not seem very good
+
+# CV accuracy of 84.5%
+attrition_mod1$results$Accuracy
+```
+
+Our second model uses Logistic Regression using all variables except Over18 and StandardHours. These two variables only have one factor, so they are meaningless in our model-building. 
+
+## 2nd Model
+```{r}
+set.seed(253)
+
+# Perform logistic regression
+attrition_allvars <- train(
+    Attrition ~ . ,
+    data = attrition_train %>% select(-Over18, -StandardHours),
+    method = "glm",
+    family = "binomial",
+    trControl = trainControl(method = "cv", number = 5),
+    metric = "Accuracy",
+    na.action = na.omit
+)
+
+summary(attrition_allvars)
+```
+
+
+```{r, echo=FALSE}
+confusionMatrix(data = predict(attrition_allvars, type = "raw"),
+                reference = as.factor(attrition_train$Attrition), 
+                positive = "Yes") 
+# This model has an Accuracy rate of 89% when the model fits all variables. Remember that the No information rate of 83.6%, so this model is slightly better. The sensitivity is  better than the previous model, at 50.9%.
+```
+```{r, eval = FALSE}
+# The CV accuracy of 87.5%.
+attrition_allvars$results$Accuracy
+```
+
+
+This model has a training accuracy of 89.7% and a CV accuracy of 87.9%, an improvement from the previous model. Additionally, the sensitivity of this model is much higher at 51.5%. However, including almost all of the variables makes this model less intuitive. Additionally, it might make the model more prone to overfitting. In order to address this problem, let's look at what variables are the most crucial to include in this model by making a variable importance plot:
+
+```{r}
+vip(attrition_allvars$finalModel, num_features = 30, bar = FALSE)
+```
+
+The top 5 most important variables in this model are `Overtime`, `EnvironmentSatisfaction`, `BusinessTravel`, `JobInvolvement`,and `DistanceFromHome`. Our third model uses logistic regression with these 5 variables.
+
+## 3rd model
+```{r}
+set.seed(253)
+
+
+attrition_bestvars <- train(
+    Attrition ~ OverTime + BusinessTravel + JobInvolvement + DistanceFromHome + EnvironmentSatisfaction  ,
+    data = attrition_train,
+    method = "glm",
+    family = "binomial",
+    trControl = trainControl(method = "cv", number = 5),
+    metric = "Accuracy",
+    na.action = na.omit
+)
+```
+
+```{r, echo=FALSE}
+confusionMatrix(data = predict(attrition_bestvars, type = "raw"),
+                reference = as.factor(attrition_train$Attrition), 
+                positive = "Yes") 
+
+#This model has a training Accuracy of 84.16% when fit on the top 5 best modelsPractically the same as the No information rate. The sensitivity is 11.2% which isn't good.
+```
+```{r, eval = FALSE}
+# The CV accuracy is 84.5%.
+attrition_bestvars$results$Accuracy
+```
+
+
+The model ends up having only 84.2% training accuracy, 84.1% CV accuracy, and 13.0% sensitivity, which is similarly poor to our first model. Another method of trying to reduce the number of variables in a model is by using lasso to penalize having lots of variables. For our 4th model, we tried a lasso model to do this and also hopefully get better accuracy and sensitivity rates.
+
+## 4th model
+```{r}
+set.seed(253)
+
+attrition_lasso <- train(
+    Attrition ~ .,
+    data = attrition_train %>% select(-Over18, -StandardHours),
+    method = "glmnet",
+    family = "binomial",
+    trControl = trainControl(method = "cv", number = 5),
+    tuneGrid = data.frame(alpha = 1, 
+                          lambda = 10^seq(-4, 0, length = 100)),
+    metric = "Accuracy",
+    na.action = na.omit
+)
+
+
+
+```
+
+
+```{r, echo=FALSE}
+#training accuracy
+confusionMatrix(data = predict(attrition_lasso, type = "raw"),
+                reference = as.factor(attrition_train$Attrition), 
+                positive = "Yes") 
+
+#CV accuracy
+attrition_lasso$results %>%
+  filter(lambda == attrition_lasso$bestTune$lambda)
+
+# The training accuracy for this model is 89.3% (an improvement from the NIR of 83.6%!) with a sensitivity is 47.9%.
+```
+```{r, eval = FALSE}
+# The CV accuracy is 88.2% with a lambda value of 0.001232847.		
+attrition_lasso$bestTune$lambda
+```
+
+>Model Evaluation
+
+This model, using the best lambda (of 0.001232847) had an accuracy rate of 89.31%, which is noticeably higher than the No Information Rate. Most importantly for our model, the sensitivity is 47.9%, meaning, for all the people that truly attrite, we predict correctly 47.9% of the time. Ideally, we would want something higher still, but this sensitivity is much better than the sensitivities in our previous models (besides the all-variable one).
+
+
+The plot below of lambda versus Accuracy shows that Model 4 used the lambda value of 0.001232847, because it resulted in the highest accuracy.  However, what happens if we make a new LASSO model with a different lambda value?
+
+```{r}
+#plot of lambda values versus accuracy
+attrition_lasso$results %>% 
+  ggplot(aes(x = lambda, y = Accuracy)) +
+  geom_line() +
+  scale_x_log10() 
+```
+
+Now we try another lasso model with a lambda value of 0.0005336699, to see if this results in a better sensitivity, even if it is at the cost of the accuracy lowering a bit.
+
+
+## 5th Model
+```{r}
+attrition_lasso_best <- train(
+    Attrition ~ .,
+    data = attrition_train %>% select(-Over18, -StandardHours),
+    method = "glmnet",
+    family = "binomial",
+    trControl = trainControl(method = "cv", number = 5),
+    tuneGrid = data.frame(alpha = 1, 
+                          lambda = 0.0005336699),
+    metric = "Accuracy",
+    na.action = na.omit
+)
+```
+
+```{r, echo=FALSE}
+confusionMatrix(data = predict(attrition_lasso_best, type = "raw"),
+                reference = as.factor(attrition_train$Attrition), 
+                positive = "Yes") 
+
+attrition_lasso_best$results %>%
+  filter(lambda == attrition_lasso_best$bestTune$lambda)
+```
+This model, using the best lambda (of 0.001232847) had a training accuracy rate of 89.6% and CV accuracy rate of 87.3%.  The sensitivity also went up to 49.7%.  The specificity is at 97.4%, meaning that we predict the people who will remain in their positions almost perfectly. Additionally, 5 coefficients were omitted - `DepartmentSales`, `EmployeeCount`, `JobLevel`, `MonthlyIncome`, and `MonthlyRate`. This could potentially help alleviate issues with overfitting on our training data.
+
+```{r, include=FALSE}
+coefficients(attrition_lasso_best$finalModel, 
+             attrition_lasso_best$bestTune$lambda)
+```
+
+
+
+## Conclusion 
+
+
+
+Model | Accuracy | Sensitivity | Specificity | CV Accuracy
+---------------------- | ------------- | ------------- | ------------- | ------------- 
+**Model 1: Logistic Regression with Exploratory Variables** | 0.8484 | 0.14201 | 0.98721 | 0.8416292 
+**Model 2: Logistic Regression with All Variables** | 0.897 | 0.51479 | .97209 | 0.8785603 
+**Model 3: Logistic Regression with Most Important Variables** | 0.8416 | 0.13018 | 0.98140 | 0.8406394 
+**Model 4: LASSO with "Best" Lambda** | 0.8931 | 0.47929 | 0.97442 | 0.8824485
+**Model 5: LASSO with Different Lambda** | 0.896 | 0.49704 | 0.97442 | 0.8726971
+
+
+
+To pick the final model that we want to use, we need to remember what the goal was of this model-building process: we want to predict who is most likely to attrite.  That is, who is most likely to leave their position and not be replaced?  The sensitivity will tell us that.The model with the highest sensitivity is Model 2.  However, this model may be overfitting to the training data.  Model 5 has the second highest sensitivity.  We now fit Models 2 and 5 on the testing data to see which is the best:
+
+```{r}
+#Model 2
+confusionMatrix(data = predict(attrition_allvars, newdata = attrition_test, type = "raw"), reference = as.factor(attrition_test$Attrition), 
+                positive = "Yes")
+
+#Model 5
+confusionMatrix(data = predict(attrition_lasso_best, newdata = attrition_test, type = "raw"), reference = as.factor(attrition_test$Attrition), 
+                positive = "Yes")
+```
+Surprisingly, their sensitivities are the same! The accuracy on Model 5 is 0.8798 while the accuracy on Model 2 is 0.873, so we can choose Model 5 as our best model for the time being.
+
+
+>Our thoughts
+
+In the future, we should keep trying to find a model with an even higher sensitivity, because the sensitivity is not "good" in any of these models, and we don't want to be making many inaccurate predictions about such an important issue. After running the models on the testing data we can conclude that Model 5 (a lasso model fitting all variables with a chosen lambda value) is the "best" model. 
+
+
