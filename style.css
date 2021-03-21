@@ -37,3 +37,8 @@ d-article h1 {
 .posts-list {
   font-family: 'Bitter', sans-serif;
 }
+
+html, body, p {
+  font-family: 'Bitter', sans-serif;
+  
+}

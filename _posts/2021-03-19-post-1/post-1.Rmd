@@ -1,7 +1,7 @@
 ---
 title: "Exploring Metro Transit and Nice Ride Data"
 description: |
-  Here we looked at transportation data from Metro Transit and Nice Ride bike sharing to see what might impact trends in ridership.  This was my final project for Introduction to Data Science. (Preview image retrieved from https://www.metrotransit.org/metro)
+  Here we looked at transportation data from Metro Transit and Nice Ride bike sharing to see what might impact trends in ridership.  This was my final project for Introduction to Data Science. [(Preview image source)](https://www.metrotransit.org/metro)
 author:
   - name: Colleen Minnihan, Ellen Graham, Zain Ijaz, Vishal Rana
 date: 12-06-2017

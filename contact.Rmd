@@ -1,0 +1,13 @@
+---
+title: "Questions?"
+image: "colors.jpg"
+links:
+  - label: Linkedin
+    url: https://www.linkedin.com/in/colleen-minnihan-0a82a61ba
+  - label: Email
+    url: "mailto:neelloc28@gmail.com"
+output:
+  postcards::jolla
+---
+ 
+If you want to get in touch, I'd be happy to hear from you!  You can reach me via Email or Linkedin.
