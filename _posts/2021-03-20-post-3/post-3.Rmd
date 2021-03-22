@@ -1,7 +1,7 @@
 ---
 title: "Does Straighter = Safer?"
 description: |
-  Here I use Causal Inference to investigate if sexual orientation impacts college students' perceived safety in the Twin Cities at nighttime. [(Preview image source)](https://www.artsy.net/article/artsy-editorial-rainbow-flag-universal-symbol-gay-rights)
+  Here I use Causal Inference to investigate if sexual orientation impacts college students' perceived safety in the Twin Cities at nighttime.
 author:
   - name: Colleen Minnihan
     url: {}
@@ -13,3 +13,6 @@ output:
 ---
 
 Take a look at this [website](https://sites.google.com/macalester.edu/causal-capstone-colleen) where I talk about my process and findings.
+
+
+[(Preview image source)](https://www.artsy.net/article/artsy-editorial-rainbow-flag-universal-symbol-gay-rights)

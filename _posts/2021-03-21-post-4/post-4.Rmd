@@ -1,7 +1,7 @@
 ---
 title: "What Affects Independence Among the Elderly?"
 description: |
-  We used Survival Analysis to see what factors (such as race, income, and overall health) impact the onset of dependence doing various tasks among a sample of elderly people across the United States. (Preview image source)[https://www.seattletimes.com/life/wellness/study-family-caregivers-for-elderly-need-help-too/]
+  We used Survival Analysis to see what factors (such as race, income, and overall health) impact the onset of dependence doing various tasks among a sample of elderly people across the United States.
 author:
   - name: Colleen Minnihan and Analeidi Barrera
     url: {}
@@ -13,3 +13,6 @@ output:
 ---
 
 Here is the [blog post](https://sites.google.com/macalester.edu/survivalanalysis/home) where we discuss our process and interesting findings.
+
+
+[(Preview image source)](https://www.seattletimes.com/life/wellness/study-family-caregivers-for-elderly-need-help-too/)
