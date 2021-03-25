@@ -10,6 +10,8 @@ output:
   distill::distill_article:
     self_contained: false
 ---
+[(Preview image source)](https://www.metrotransit.org/metro)
+
 
 # Introduction
 Our group wanted to know if any relationship exists between Metro Transit Bus Systems and Nice Ride Bikesharing.  Through looking at what kinds of information the data gave us, we narrowed down our research to two main questions:
@@ -437,7 +439,3 @@ ggplot()+
 niceRideRep%>%
    count(stationName)
 ```
-
-
-
-[(Preview image source)](https://www.metrotransit.org/metro)
