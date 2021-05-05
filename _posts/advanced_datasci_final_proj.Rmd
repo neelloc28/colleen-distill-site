@@ -1,0 +1,501 @@
+---
+title: "Advanced Data Science Final Project"
+author: "Anael Kuperwajs Cohen, Colleen Minnihan, Hayley Hadges, Thy Nguyen"
+date: "5/05/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE, message=FALSE, warning=FALSE}
+knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE)
+```
+
+Welcome to our final project! We are Macalester College students (class of 2021/2022) from the department of Mathematics, Statistics, and Computer Science. We took the course Advanced Data Science in R (STAT 494) during the spring semester of 2021. Below is our final project for this course.
+
+
+# Introduction
+
+Computer science is a field that is growing rapidly in the United States and around the world today. Industry is constantly releasing advancements in computer science and technology is becoming more ingrained into our daily lives with each passing day. Therefore, with an increase in technology usage, the demand for computer scientists has increased in popularity. Due to this fast-growing field, educational institutions and systems are increasing the amount of computer science courses offered in order to train more future computer scientists.
+
+These increases started at the college level, where majoring in computer science is now becoming a widely available option. At Macalester College, it is one of the largest departments for both students and faculty. While the availability of courses at the college level is a good start, there is a big push to have computer science courses offered in K-12 education. Offering computer science courses in elementary and secondary schools provides an opportunity for kids to expose themselves to coding, potentially leading to younger students discovering new interests and actively engaging with computer science earlier. Oftentimes, being exposed to computer science at a younger age can make students more comfortable with the material and the field later on, which can contribute to a more empowered and diverse set of students entering the workforce or higher education. Given the importance of having computer science courses available in K-12 education, we decided to investigate the availability of computer science courses in K-12 school districts in Minnesota. In this project, we explore the connection between a variety of data sets related to this topic, including K-12 computer science course availability in Minnesota, demographic information from the U.S. census, ACT scores, and school district financial information.
+
+```{r}
+library(tidyverse)
+library(sf)
+library(plotly)
+library(gridExtra)
+library(tidymodels)
+library(naniar)
+library(DALEX)
+library(DALEXtra)
+library(vip)
+```
+
+```{r}
+##### RUN THIS CHUNK WHENEVER YOU READ IN THE DATA
+mn_acs_ss_act_pred <- st_read("mn_acs_ss_act_pred/mn_acs_ss_act_pred.shp",
+                geometry_column = "geometry",
+                fid_column_name = "geometry",
+                quiet = TRUE)
+# rename the census variables because their names were reformatted...
+names(mn_acs_ss_act_pred)[1:28] <- 
+  c("GEOID", "District", "District.Nbr", "male_5to9", "male_10to14", "male_15to17",
+    "total_pop", "race_white_only", "race_Black_only", "race_Asian_only",
+    "race_pacific_islander_only", "at_least_two_races", "SSI_pubassist_foodstamps",
+    "med_household_inc_12mo", "house_units_w_mortgage", "med_gross_rent",
+    "internet_subscrip_in_house", "perc_male_5to9", "perc_male_10to14",
+    "perc_male_15to17", "perc_white_only", "perc_black_only", "perc_asian_only",
+    "perc_pacific_islander_only", "perc_at_least_two_races", "perc_SSI_pubassist_foodstamps",
+    "perc_house_units_w_mortgage", "perc_internet_subscription")
+names(mn_acs_ss_act_pred)[93] <- c("TotalClasses")
+```
+
+# Computer Science K-12 Course Availability in Minnesota
+
+To begin with, let’s explore what computer science course availability already exists in the state of Minnesota for K-12 education. This information comes from the Minnesota State Department of Education, which allows public access to their data. The two plots below show the various public school districts in the state with the amount and variety of computer science courses offered in each district. The computer science categories include Computer Literacy, Management Information Systems, Network Systems, Computer Science/Programming, Media Technology, and Information Support and Services. Across Minnesota the average number of computer science courses available is roughly six, and the average variety of computer science courses is approximately two.
+
+As seen in the first map, the St. Paul Public School District has the most computer science course offerings, with a total of 54 courses. While Rosemount-Apple Valley-Eagan District and Anoka-Hennepin School District have the next highest course offerings with 45 and 43 courses respectively, the rest of the districts do not top 25 total courses. These school districts are striking compared to the state average of six, as can be seen by the shocking yellow in the middle of a majority black and purple map. There are 86 K-12 school districts that offer no computer science courses. The second map illustrating the variety of computer science courses offered does not show as much of a staggering difference between the school districts. There are 146 school districts that offer one or less computer science course categories, and 176 school districts that offer more than one type of computer science course.
+
+These plotly maps are an interactive tool that both visually and textually show important information. You can hover over a district and a text box will appear with relevant information, making for an easy comparison between districts.
+
+
+```{r}
+mn_acs_ss_act_pred_viz <- 
+  mn_acs_ss_act_pred %>%  drop_na()
+
+ggplotly(
+  ggplot(mn_acs_ss_act_pred_viz) +
+  geom_sf(aes(fill = TotalClasses, text = paste(District)),  size = .1, color = "white") +
+  scale_fill_viridis_c(option = "B") +
+  labs(title = "Total CS Courses Offered", fill = "") +
+  theme(axis.ticks = element_blank(),
+        axis.text = element_blank(),
+        panel.background = element_rect(fill = "white"),
+        plot.title = element_text(hjust = 0.5),
+        title =element_text(size=12, face='bold'))
+) 
+
+ggplotly(
+  ggplot(mn_acs_ss_act_pred_viz) +
+  geom_sf(aes(fill = NumCat, text = paste(District)),  size = .1, color = "white") +
+  scale_fill_viridis_c(option = "B") +
+  labs(title = "Variety of CS Courses Offered", fill = "") +
+  theme(axis.ticks = element_blank(),
+        axis.text = element_blank(),
+        panel.background = element_rect(fill = "white"),
+        plot.title = element_text(hjust = 0.5),
+        title =element_text(size=12, face='bold'))
+) 
+```
+
+
+# Demographics, ACT Scores, and School District Finances
+
+Due to the fact that public schools are funded by property taxes, course availability is usually an intersectional issue that is reliant on other factors, such as redlining and gentrification. We hypothesized that there would be a correlation between course availability and overall wealth and access to resources of each district. In this section, we explore some of the variables that we expected to have a significant relationship with computer science course availability. We retrieved this data from the U.S. Census Bureau and the Minnesota State Department of Education.
+
+### Key Observations:
+* Notice in the plots below that general wealth is clustered in the Twin Cities Metro area, which is also the area that is the most racially diverse. That being said, Minnesota as a whole has a large White population.
+* The median household income in the center of the Twin Cities Metro area decreases when compared to the immediate surrounding area, as seen by the purple center in a lighter colored circle. One possible explanation is a wide range of household incomes in that district.
+* The areas with a higher percentage of people receiving public assistance appears to be an inverse of where the general wealth lies in Minnesota.
+* The percentage of home internet subscriptions is higher in the Twin Cities.
+* The population map and the total school district revenue map look incredibly similar, suggesting that the population size might have a large effect on district funding. When controlled for population, the revenues match up evenly between districts.
+* In general, when the total population is lower, the per pupil total spending increases. However, it is not a perfect trend. One exception is the center of the Twin Cities Metro area, where per pupil total spending and total population increases.
+* There is no distinct trend or pattern in the average ACT composite score map, however there is a loose association with higher scores closer to the Twin Cities Metro area. The only school districts that are colored in black are towards the outer edges of the state.
+
+```{r}
+#population
+Population <-
+ggplot(mn_acs_ss_act_pred, aes(fill = total_pop)) + 
+  geom_sf(color = NA) + 
+  scale_fill_viridis_c(option = "magma", labels = scales::comma) +
+  labs(title = "Total Population", fill = "") +
+  theme(axis.ticks = element_blank(),
+        axis.text = element_blank(),
+        panel.background = element_rect(fill = "white"),
+        plot.title = element_text(hjust = 0.5))
+```
+
+```{r}
+#household income
+Household_Income <-
+mn_acs_ss_act_pred %>%
+  ggplot(aes(fill = med_household_inc_12mo)) + 
+  geom_sf(color = NA) + 
+  scale_fill_viridis_c(option = "magma", labels = scales::dollar) +
+  labs(title = "Median Household Income", fill = "") +
+  theme(axis.ticks = element_blank(),
+        axis.text = element_blank(),
+        panel.background = element_rect(fill = "white"),
+        plot.title = element_text(hjust = 0.5))
+```
+
+```{r}
+#percent race white only.... ok so MN is veryyyyyy white
+Percent_White <-
+ggplot(mn_acs_ss_act_pred, aes(fill = perc_white_only)) + 
+  geom_sf(color = NA) + 
+  scale_fill_viridis_c(option = "magma", labels = scales::percent) +
+  labs(title = "Percent of Population that is Only White", fill = "") +
+  theme(axis.ticks = element_blank(),
+        axis.text = element_blank(),
+        panel.background = element_rect(fill = "white"),
+        plot.title = element_text(hjust = 0.5))
+```
+
+
+```{r}
+#percent race Black only
+Percent_Black <-
+ggplot(mn_acs_ss_act_pred, aes(fill = perc_black_only)) + 
+  geom_sf(color = NA) + 
+  scale_fill_viridis_c(option = "magma", labels = scales::percent) +
+  labs(title = "Percent of Population that is Only Black", fill = "") +
+  theme(axis.ticks = element_blank(),
+        axis.text = element_blank(),
+        panel.background = element_rect(fill = "white"),
+        plot.title = element_text(hjust = 0.5))
+```
+
+```{r}
+#percent asian only
+Percent_Asian <-
+ggplot(mn_acs_ss_act_pred, aes(fill = perc_asian_only)) + 
+  geom_sf(color = NA) + 
+  scale_fill_viridis_c(option = "magma", labels = scales::percent_format(accuracy = 5L)) +
+  labs(title = "Percent of Population that is Only Asian", fill = "") +
+  theme(axis.ticks = element_blank(),
+        axis.text = element_blank(),
+        panel.background = element_rect(fill = "white"),
+        plot.title = element_text(hjust = 0.5))
+```
+
+```{r}
+#percent of ppl that have computer and internet subscription in household
+Percent_Internet_Sub <-
+ggplot(mn_acs_ss_act_pred, aes(fill = perc_internet_subscription)) + 
+  geom_sf(color = NA) + 
+  scale_fill_viridis_c(option = "magma", labels = scales::percent_format(accuracy = 5L)) +
+  labs(title = "Percent of Population with an Internet Subscription", fill = "") +
+  theme(axis.ticks = element_blank(),
+        axis.text = element_blank(),
+        panel.background = element_rect(fill = "white"),
+        plot.title = element_text(hjust = 0.5))
+```
+
+```{r}
+#percent of ppl that receive food stamps or SSI or public assistance
+Percent_Public_Assistance <-
+ggplot(mn_acs_ss_act_pred, aes(fill = perc_SSI_pubassist_foodstamps)) + 
+  geom_sf(color = NA) + 
+  scale_fill_viridis_c(option = "magma", labels = scales::percent) +
+  labs(title = "Percent of Population Receiving Public Assistance", fill = "") +
+  theme(axis.ticks = element_blank(),
+        axis.text = element_blank(),
+        panel.background = element_rect(fill = "white"),
+        plot.title = element_text(hjust = 0.5))
+```
+
+```{r}
+#total elementary/secondary revenue
+Revenue <-
+ggplot(mn_acs_ss_act_pred, aes(fill = TOTALRE)) + 
+  geom_sf(color = NA) + 
+  scale_fill_viridis_c(option = "magma", labels = scales::dollar) +
+  labs(title = "Total School District Revenue", fill = "") +
+  theme(axis.ticks = element_blank(),
+        axis.text = element_blank(),
+        panel.background = element_rect(fill = "white"),
+        plot.title = element_text(hjust = 0.5))
+```
+
+```{r}
+#average composite ACT score
+ACT <-
+ggplot(mn_acs_ss_act_pred, aes(fill = Avg_Cmp)) + 
+  geom_sf(color = NA) + 
+  scale_fill_viridis_c(option = "magma") +
+  labs(title = "Average ACT Composite Score", fill = "") +
+  theme(axis.ticks = element_blank(),
+        axis.text = element_blank(),
+        panel.background = element_rect(fill = "white"),
+        plot.title = element_text(hjust = 0.5))
+```
+
+```{r}
+Per_Pupil_Spending <-
+  ggplot(mn_acs_ss_act_pred, aes(fill = PPCSTOT)) + 
+  geom_sf(color = NA) + 
+  scale_fill_viridis_c(option = "B", labels = scales::dollar) +
+  labs(title = "Per Pupil Total Spending by School District", fill = "") +
+  theme(axis.ticks = element_blank(),
+        axis.text = element_blank(),
+        panel.background = element_rect(fill = "white"),
+        plot.title = element_text(hjust = 0.5))
+```
+
+```{r, fig.width=14, fig.height=14}
+#Some of these maps look incredibly identical
+grid.arrange(Population, Percent_White, Percent_Black, Percent_Asian, 
+             Household_Income, Percent_Public_Assistance, Percent_Internet_Sub,
+             Per_Pupil_Spending, Revenue, 
+             ACT, nrow = 4)
+```
+
+
+# Connections
+
+Now that we have introduced you to our various data sets, we will show you how they connect and investigate if there is a correlation between course availability and demographic variables, ACT scores, and school district funding.
+
+Both maps include the district population and name. The first map examines the total number of computer science courses offered and the second map highlights the number of computer science course categories offered. The first map also includes the median household income, the percentage of the population that identifies as entirely White, and the average ACT score, while the second map includes the total revenue and the total spending per pupil. These maps use plotly, similar to the first section above, so you can use the hover feature to view the variable information.
+
+```{r, echo = FALSE}
+#Should I add subtitles or change the titles?
+ggplotly(
+  ggplot(mn_acs_ss_act_pred_viz) +
+  geom_sf(aes(fill = TotalClasses, text = paste("Median Household Income: $", med_household_inc_12mo,
+                                                "<br>", "Percentage of White People: ",
+                                                paste(round(100*perc_white_only, 2), "%", sep=""),
+                                                "<br>", "Average ACT Score: ", Avg_Cmp,
+                                                "<br>", "Population: ", total_pop, 
+                                                "<br>", District)),  size = .1, color = "white") +
+  scale_fill_viridis_c(option = "B") +
+  labs(title = "District Profiles Colored by Total CS Courses Offered", fill = "") +
+  theme(axis.ticks = element_blank(),
+        axis.text = element_blank(),
+        panel.background = element_rect(fill = "white"),
+        plot.title = element_text(hjust = 0.5),
+        title =element_text(size=12, face='bold'))
+)
+
+
+ggplotly(
+  ggplot(mn_acs_ss_act_pred_viz) +
+  geom_sf(aes(fill = NumCat, text = paste("Total Revenue: $", TOTALRE,
+                                                "<br>", "Total Per Pupil Spending: $", PPCSTOT,
+                                                "<br>", "Population: ", total_pop, 
+                                                "<br>", District)),  size = .1, color = "white") +
+  scale_fill_viridis_c(option = "B") +
+  labs(title = "District Profiles Colored by Variety of CS Courses Offered", fill = "") +
+  theme(axis.ticks = element_blank(),
+        axis.text = element_blank(),
+        panel.background = element_rect(fill = "white"),
+         plot.title = element_text(hjust = 0.5),
+         title =element_text(size=12, face='bold'))
+) 
+```
+
+We then wanted to take a closer look at two specific Minnesota school districts that differ drastically in computer science course availability to see how they varied in demographics. Below, we highlighted the two districts we will focus on for the subsequent comparisons: Red Lake Public School District (the district in northern Minnesota, located on the Red Lake Reservation) and St. Paul Public School District. We chose these two particular districts because Red Lake Public School District had the lowest total number of Computer Science courses offered, while St. Paul Public School District had the highest.
+
+```{r}
+st_paul_pub_school <- mn_acs_ss_act_pred %>%
+  filter(District == "St. Paul Public School District")
+
+red_lake_pub_school <- mn_acs_ss_act_pred %>%
+  filter(District == "Red Lake Public School District")
+```
+
+```{r}
+mn_acs_ss_act_pred %>%
+  mutate(highlighted_districts = ifelse(District == "Red Lake Public School District" | District == "St. Paul Public School District", "yes", "no")) %>%
+  ggplot(aes(fill = highlighted_districts)) +
+  geom_sf(color = "black", size = 0.2) +
+  scale_fill_manual(values = c("beige","maroon4")) +
+  theme(axis.ticks = element_blank(),
+        axis.text = element_blank(),
+        legend.position = "none",
+        panel.background = element_rect(fill = "white"),
+        title = element_text(size=12, face='bold')) +
+  ggtitle("Profile of Two Minnesota School Districts") #change title?
+```
+
+From these two district profiles, one can see that not only does St. Paul Public School District have more course offerings and categories, but the percentage of people who are White, median household income, and percentage of people with internet subscriptions in their homes are much higher than in the Red Lake Public School District. These comparisons help us confirm the hypothesis that generational wealth and race are inherently linked to quality of public school education.
+
+```{r}
+ggplot(red_lake_pub_school) + 
+  geom_sf(color = "magenta") +
+  ggtitle("Red Lake Public School District Profile") +
+  geom_sf_text(aes(label = "Total CS Courses Offered: 6"), nudge_y = 0.14) +
+  geom_sf_text(aes(label = "Number of CS Course Categories: 2"), nudge_y = 0.09) +
+  geom_sf_text(aes(label = "Population: 5,815"), nudge_y = 0.04) +
+  geom_sf_text(aes(label = "Perc. White People: 2.18%"), nudge_y = -0.01) +
+  geom_sf_text(aes(label = "Median Household Income: $39,676"), nudge_y = -0.06) +
+  geom_sf_text(aes(label = "Perc. w/ Internet Subscription: 59.9%"), nudge_y = -0.11) +
+  geom_sf_text(aes(label = "Perc. Receiving Govt. Assist.: 67.22%"), nudge_y = -0.16) +
+  theme(axis.ticks = element_blank(),
+        axis.text = element_blank(),
+        axis.title = element_blank(),
+        panel.background = element_rect(fill = "white"),
+        plot.title = element_text(hjust = 0.5),
+        title = element_text(size=12, face='bold'))
+```
+
+\
+\
+\
+
+```{r}
+ggplot(st_paul_pub_school) + 
+  geom_sf(color = "purple") +
+  ggtitle("St. Paul Public School District Profile") +
+  coord_sf(ylim = c(44.88,45.00)) +
+  geom_sf_text(aes(label = "Total CS Courses Offered: 54"), nudge_y = 0.047) +
+  geom_sf_text(aes(label = "Number of CS Course Categories: 5"), nudge_y = 0.038) +
+  geom_sf_text(aes(label = "Population: 304,547"), nudge_y = 0.029) +
+  geom_sf_text(aes(label = "Perc. White People: 56.96%"), nudge_y = 0.02) +
+  geom_sf_text(aes(label = "Median Household Income: $57,876"), nudge_y = 0.011) +
+  geom_sf_text(aes(label = "Perc. w/ Internet Subscription: 85.6%"), nudge_y = 0.002) +
+  geom_sf_text(aes(label = "Perc. Receiving Govt. Assist.: 37.87%"), nudge_y = -0.007) +
+  theme(axis.ticks = element_blank(),
+        axis.text = element_blank(),
+        axis.title = element_blank(),
+        panel.background = element_rect(fill = "white"),
+        plot.title = element_text(hjust = 0.5),
+        title = element_text(size=12, face='bold'))
+```
+
+
+# Predicting Computer Science K-12 Course Availability in Minnesota
+
+To understand what factors have the largest influence on course availability, we created two models to predict the amount of computer science courses per district in the state of Minnesota. The first was a LASSO model, a linear regression method that shrinks coefficients (some even to zero) to eliminate insignificant variables and weigh them accordingly. With over 80 possible predictors, it would be difficult to quantitatively select variables for ordinary least squares and including every variable would lead to overfitting, where the model is no longer accurate on other data sets (because it was fit so precisely to this specific one). The second model that we fitted was a random forest. A random forest consists of a large number of decision trees and averages the prediction over these trees. 
+
+Before fitting the models, the main transformation we had to perform was log-transformation for many of the variables from the Annual Survey of School System Finances. These were raw tallies of revenue or expenditure, so the data were right-skewed with a few districts having significantly higher values than the majority. Based on the RMSE, the random forest greatly outperformed the LASSO, with an RMSE of approximately 1.86 compared to the LASSO's 4.11.
+
+In a random forest model, some variables will have higher predictive power and contribute more to the outcome. Below is a plot ranking our predictors in terms of their importance:
+
+```{r data, include=FALSE}
+# read in the data
+mn <- st_read("mn_acs_ss_act_pred/mn_acs_ss_act_pred.shp",
+              geometry_column = "geometry",
+              fid_column_name = "geometry")
+# rename the census variables because their names were reformatted...
+names(mn)[1:28] <- 
+  c("GEOID", "District", "District.Nbr", "male_5to9", "male_10to14", "male_15to17",
+    "total_pop", "race_white_only", "race_Black_only", "race_Asian_only",
+    "race_pacific_islander_only", "at_least_two_races", "SSI_pubassist_foodstamps",
+    "med_household_inc_12mo", "house_units_w_mortgage", "med_gross_rent",
+    "internet_subscrip_in_house", "perc_male_5to9", "perc_male_10to14",
+    "perc_male_15to17", "perc_white_only", "perc_black_only", "perc_asian_only",
+    "perc_pacific_islander_only", "perc_at_least_two_races", "perc_SSI_pubassist_foodstamps",
+    "perc_house_units_w_mortgage", "perc_internet_subscription")
+names(mn)[93] <- c("TotalClasses")
+# drop the geometry column and convert back to regular df so it's easier to work with
+mn <- mn %>%
+  st_drop_geometry()
+# remove NAs so we could fit rf without errors
+mn <- mn %>%
+  drop_na()
+```
+
+```{r split, include=FALSE}
+set.seed(21)
+# split the data into a training and test set
+mn_split <- initial_split(mn, prop = .75)
+mn_training <- training(mn_split)
+mn_testing <- testing(mn_split)
+# create cross-validation folds
+mn_cv <- vfold_cv(mn_training, v = 5)
+```
+
+```{r recipe, include=FALSE}
+mn_recipe <- 
+  recipe(TotalClasses ~ ., data = mn_training) %>%
+  # ignore observations with missing data (necessary for LASSO mod)
+  step_naomit(everything(), skip = TRUE) %>%
+  # remove variables
+  step_rm(
+    # this one can be considered as response variable itself
+    NumCat, 
+    # all variables have the same value for these two
+    PCTTOTA, LOCRPAR, 
+    # raw counts from ACS
+    matches("[a-z]", ignore.case = FALSE),
+    -starts_with("perc"),
+    -total_pop,
+    -Avg_Cmp,
+    -TotalClasses
+    ) %>%
+  # log-transform 
+  step_log(
+    # total population
+    total_pop,
+    # spending / revenue variables from the school survey
+    ## ignore those that start with P since they're percentages / spending per student
+    matches("^[A-OQ-Z]{4,}", ignore.case = FALSE), 
+    ## ignore ID variables as well
+    -GEOID, -CONUM, -CBSA,
+    # some variables have 0s which will produce NaNs when log-transformed
+    offset = 1) %>% 
+  # make ID variables evaluative (not included in modeling)
+  update_role(
+    all_of(c("GEOID",
+             "District",
+             "District.Nbr",
+             "CONUM",
+             "CSA",
+             "CBSA")),
+    new_role = "evaluative") %>%
+  # make integers numeric
+  step_mutate_at(is.integer, fn = as.numeric) %>%
+  # normalize numerical variables
+  step_normalize(all_predictors())
+```
+
+```{r model, include=FALSE}
+set.seed(21)
+# define the model type
+mn_rf_mod <- 
+  rand_forest(mtry = 23, # ~1/3 of predictors 
+              min_n = 5, 
+              trees = 200) %>% 
+  set_mode("regression") %>% 
+  set_engine("ranger")
+
+# set up the workflow
+mn_rf_wf <-
+  workflow() %>%
+  add_recipe(mn_recipe) %>%
+  add_model(mn_rf_mod)
+
+# fit the model
+mn_rf_fit <- 
+  mn_rf_wf %>% 
+  fit(mn_training)
+```
+
+```{r var-imp, include=FALSE}
+set.seed(1) 
+# create explainer
+rf_explain <- 
+  explain_tidymodels(
+    model = mn_rf_fit,
+    data = mn_training %>% select(-TotalClasses), 
+    y = mn_training %>%  pull(TotalClasses),
+    label = "rf"
+  )
+# compute variable importance
+rf_var_imp <- model_parts(rf_explain)
+```
+
+```{r plot, echo=FALSE, fig.align="center", fig.width=10, fig.height=12}
+# plot
+plot(rf_var_imp, show_boxplots = TRUE)
+```
+
+Each bar shows how much the RMSE would change if the corresponding variable was permuted. If permuting a certain variable significantly increases the RMSE relative to permuting other variables, then it would be important. Here, the RMSE increases the most when revenue from the Child Nutrition Act, spending on instructional staff, and total expenditure are permuted. The highest-ranking variables all came from the School Survey, and the top 3 most important demographic variables from the ACS are percent of the total population who are Black only, percent of households with internet subscription, and percent of households receiving SSI, public assistance, or food stamps (in each district). The variables at the bottom that showed no change in RMSE if permuted were excluded from the modeling at the start because they are ID or raw demographic variables (for these we transformed them into percentages).
+
+
+# Implications
+
+One note that is critical to keep in mind is that correlation does not imply causation. Although this project looks at connections between various data sets and different variables, we are not suggesting that any of our predictors directly alters computer science course availability. It is possible that that is the case, given the work that we have done, but without an experiment or accounting for potential confounders (other variables that may affect the predictor and outcome variables), we cannot be certain about causation.
+
+Previous work does exist about how disparities in education are related to many of the variables we displayed in our project, such as household income and race. For instance, it has been proven that ACT and standardized test scores show more about family wealth and privilege than actual intelligence or likelihood for success. Therefore, it is logical that the same districts that have high average ACT scores will have high median household incomes due to systemic inequality. Due to the fact that computer science is a newer field, less work has been done specifically about this subject. The rise in available literature on this subject in recent years has also been focused more on college and graduate school, with K-12 education receiving less attention.
+
+That being said, there are many nuances to this issue of course availability and inequality that we could not address within the scope of our project. One variable we looked at was race, and while the connection between race and educational disparities has been studied, that can be difficult to see in some of our work. We hypothesize that there are a few reasons for this. First, Minnesota in general is largely populated by White people. Furthermore, the places with the most racial diversity (near the Twin Cities), are also places with considerable inequality. Without this information, it may seem as though there is correlation between greater diversity, higher median household income, and computer science course availability. However, we cannot make this claim without further investigating how the inequalities within each district play a role.
+
+Along with that, the population size of the districts could affect the outcomes. Districts can encompass many schools, and it is possible that within a district there is variation in demographics and course availability. Future work might include investigating a smaller region to explore some of these nuances in order to better understand the connection between computer science course availability in K-12 education and our other variables.
+
+
+**For more information about how we created this project, please visit:**
+
+GitHub: https://github.com/anaelkuperwajs/STAT494-Final-Project
+
+Behind the scenes: https://github.com/anaelkuperwajs/STAT494-Final-Project/blob/main/behind_the_scenes.Rmd
